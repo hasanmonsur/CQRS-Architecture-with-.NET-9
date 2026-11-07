@@ -34,20 +34,21 @@ The application exposes a simple order API and includes the core architectural s
 
 ```mermaid
 flowchart LR
-    Client[Client / API Consumer] -->|POST /orders| API[ASP.NET Core API]
-    API -->|Send CreateOrderCommand| Mediator[MediatR]
-    Mediator --> CMD[CreateOrderCommandHandler]
-    CMD -->|Save order| WriteDb[(WriteDbContext / SQLite)]
-    CMD -->|Return order id| API
+    Client[Client or API Consumer] -->|Create order request| API[ASP.NET Core API]
+    API -->|Send create command| Mediator[MediatR]
+    Mediator --> CommandHandler[CreateOrderCommandHandler]
+    CommandHandler -->|Save order| WriteDb[(Write database)]
+    CommandHandler -->|Return order ID| API
+    API -->|Synchronize read model| ReadSync[Read model synchronization]
+    ReadSync --> ReadDb[(Read database)]
 
-    API -->|Sync read model| ReadSync[Manual read model sync]
-    ReadSync --> ReadDb[(ReadDbContext / SQLite)]
-
-    Client -->|GET /orders/{id}| API
-    API -->|Send GetOrderQuery| Mediator
-    Mediator --> Query[GetOrderQueryHandler]
-    Query --> ReadDb
-    ReadDb --> Response[OrderDto response]
+    Client -->|Fetch order by ID| API
+    API -->|Send order query| Mediator
+    Mediator --> QueryHandler[GetOrderQueryHandler]
+    QueryHandler -->|Read order DTO| ReadDb
+    ReadDb -->|Return order DTO| QueryHandler
+    QueryHandler --> API
+    API -->|Return order response| Client
 ```
 
 ## Request sequence
@@ -57,32 +58,32 @@ sequenceDiagram
     autonumber
     actor Client
     participant API as ASP.NET Core API
-    participant MediatR as MediatR
-    participant WriteHandler as CreateOrderCommandHandler
+    participant Mediator as MediatR
+    participant CreateHandler as CreateOrderCommandHandler
     participant ReadHandler as GetOrderQueryHandler
-    participant WriteDb as WriteDbContext (SQLite)
-    participant ReadDb as ReadDbContext (SQLite)
+    participant WriteDb as WriteDbContext SQLite
+    participant ReadDb as ReadDbContext SQLite
 
-    Client->>API: POST /orders { customerId, items }
-    API->>MediatR: Send CreateOrderCommand
-    MediatR->>WriteHandler: Handle command
-    WriteHandler->>WriteDb: Add order and SaveChanges
-    WriteDb-->>WriteHandler: Persisted order id
-    WriteHandler-->>MediatR: Return order id
-    MediatR-->>API: Return created order id
-    API->>WriteDb: Fetch order record
-    API->>ReadDb: Insert OrderDto for read side
-    ReadDb-->>API: Read model saved
-    API-->>Client: 201 Created
+    Client->>API: POST create order
+    API->>Mediator: Send CreateOrderCommand
+    Mediator->>CreateHandler: Handle command
+    CreateHandler->>WriteDb: Add order and save changes
+    WriteDb-->>CreateHandler: Return persisted order ID
+    CreateHandler-->>Mediator: Return order ID
+    Mediator-->>API: Return order ID
+    API->>WriteDb: Load saved order
+    API->>ReadDb: Save OrderDto read model
+    ReadDb-->>API: Confirm read model saved
+    API-->>Client: Return created response
 
-    Client->>API: GET /orders/{id}
-    API->>MediatR: Send GetOrderQuery
-    MediatR->>ReadHandler: Handle query
-    ReadHandler->>ReadDb: Query OrderDto by id
+    Client->>API: GET order by ID
+    API->>Mediator: Send GetOrderQuery
+    Mediator->>ReadHandler: Handle query
+    ReadHandler->>ReadDb: Find OrderDto by ID
     ReadDb-->>ReadHandler: Return OrderDto
-    ReadHandler-->>MediatR: Return order details
-    MediatR-->>API: Return response
-    API-->>Client: 200 OK
+    ReadHandler-->>Mediator: Return order details
+    Mediator-->>API: Return query result
+    API-->>Client: Return order response
 ```
 
 ## Benefits
@@ -92,7 +93,7 @@ sequenceDiagram
 - **Improved maintainability:** business logic stays organized into distinct command and query flows.
 - **Better performance tuning:** read models can be shaped specifically for query workloads.
 - **Simpler domain logic boundaries:** changes in read requirements do not necessarily affect the write side.
-- **Strong learning value:** this project is a clean demonstration of CQRS patterns in a .NET core service.
+- **Strong learning value:** this project demonstrates CQRS patterns in a .NET service.
 
 ## Use cases
 
@@ -167,22 +168,22 @@ Commands/                     Command handlers and command contracts
   CreateOrderCommand.cs
   CreateOrderCommandHandler.cs
 
-Data/                        EF Core contexts for read and write stores
+Data/                         EF Core contexts for read and write stores
   ReadDbContext.cs
   WriteDbContext.cs
 
-Models/                      Domain and query models
+Models/                       Domain and query models
   GetOrderQuery.cs
   Order.cs
   OrderDto.cs
 
-Migrations/                  EF Core migration files
+Migrations/                   EF Core migration files
 
-Program.cs                   ASP.NET Core app setup and endpoints
-OrderManagement.csproj       Project configuration
-appsettings.json             App configuration and connection strings
-read.db                      SQLite read database
-write.db                     SQLite write database
+Program.cs                    ASP.NET Core app setup and endpoints
+OrderManagement.csproj        Project configuration
+appsettings.json              App configuration and connection strings
+read.db                       SQLite read database
+write.db                      SQLite write database
 ```
 
 ## SEO keywords
